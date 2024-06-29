@@ -2,60 +2,28 @@
 """
 Computes embeddings on a set of tasks
 """
-
+import argparse
 import json
 import os
 import shutil
-import time
+from collections import namedtuple
 from pathlib import Path
 
-import click
-import torch
 from slugify import slugify
 from tqdm import tqdm
 
-import heareval.gpu_max_mem as gpu_max_mem
 from heareval.embeddings.task_embeddings import Embedding, task_embeddings
-
-# if torch.cuda.is_available() and not tf.test.is_gpu_available(
-#     cuda_only=False, min_cuda_compute_capability=None
-# ):
-#     raise ValueError("GPUs not available in tensorflow, but found by pytorch")
+from heareval.utils import run_utils
 
 
-@click.command()
-@click.argument("module", type=str)
-@click.option(
-    "--model",
-    default=None,
-    help="Location of model weights file",
-    type=click.Path(exists=True),
-)
-@click.option(
-    "--tasks-dir",
-    default="tasks",
-    help="Location of tasks to compute embeddings on",
-    type=str,
-)
-@click.option(
-    "--task",
-    default="all",
-    help="Task to run. (Default: all)",
-    type=str,
-)
-@click.option(
-    "--embeddings-dir", default="embeddings", help="Location to save task embeddings"
-)
-@click.option(
-    "--model-options", default="{}", help="A JSON dict of kwargs to pass to load_model"
-)
 def runner(
     module: str,
-    model: str = None,
-    tasks_dir: str = "tasks",
-    task: str = "tasks",
-    embeddings_dir: str = "embeddings",
-    model_options: str = "{}",
+    model: str,
+    tasks_dir: str,
+    task: str,
+    embeddings_dir: str,
+    model_options: str,
+    slurm_args: argparse.Namespace,
 ) -> None:
     model_options_dict = json.loads(model_options)
     if isinstance(model_options_dict, dict):
@@ -85,6 +53,9 @@ def runner(
     # Load the embedding model
     embedding = Embedding(module, model, model_options_dict)
 
+    Submission = namedtuple("Submission", ["task_path", "embed_task_dir", "done_embeddings", "jobs"])
+    submissions: list[Submission] = []
+
     if task == "all":
         tasks = list(tasks_dir_path.iterdir())
     else:
@@ -105,32 +76,26 @@ def runner(
         if os.path.exists(embed_task_dir):
             shutil.rmtree(embed_task_dir)
 
-        start = time.time()
-        gpu_max_mem.reset()
+        jobs = task_embeddings(embedding, task_path, embed_task_dir, slurm_args)
+        submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
-        task_embeddings(embedding, task_path, embed_task_dir)
-
-        time_elapsed = time.time() - start
-        gpu_max_mem_used = gpu_max_mem.measure()
-        print(
-            f"...computed embeddings in {time_elapsed} sec "
-            f"(GPU max mem {gpu_max_mem_used}) "
-            f"for {task_path.name} using {module} {model_options}"
-        )
-        open(embed_task_dir.joinpath("profile.embeddings.json"), "wt").write(
-            json.dumps(
-                {
-                    "time_elapsed": time_elapsed,
-                    "gpu_max_mem": gpu_max_mem_used,
-                    "gpu_device_name": gpu_max_mem.device_name(),
-                },
-                indent=4,
-            )
-        )
-
+    for submission in submissions:
         # Touch this file to indicate that processing completed successfully
-        open(done_embeddings, "wt")
+        f"...computed embeddings for {submission.task_path.name} using {module} {model_options}"
+        open(submission.done_embeddings, "wt")
 
 
 if __name__ == "__main__":
-    runner()
+    parser = argparse.ArgumentParser()
+    run_utils.add_slurm_args(parser, cpus_per_task=10, gpus_per_node=1)
+    parser.add_argument("module", type=str)
+    parser.add_argument("model", type=Path, help="Location of model weights file")
+    parser.add_argument("tasks-dir", default="tasks", type=str, help="Location of tasks to compute embeddings on")
+    parser.add_argument("task", type=str, help="Task to run", default="all")
+    parser.add_argument("embeddings-dir", default="embeddings", type=str, help="Location to save task embeddings")
+    parser.add_argument("model-options", default="{}", type=str)
+    args = parser.parse_args()
+
+    runner(args.module, args.model, args.tasks%dir, args.task, args.embeddings_dir, args.model_options, slurm_args=args)
+
+
