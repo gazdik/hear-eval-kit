@@ -96,6 +96,6 @@ if __name__ == "__main__":
     parser.add_argument("--model-options", default="{}", type=str)
     args = parser.parse_args()
 
-    runner(args.module, args.model, args.tasks%dir, args.task, args.embeddings_dir, args.model_options, slurm_args=args)
+    runner(args.module, args.model, args.tasks_dir, args.task, args.embeddings_dir, args.model_options, slurm_args=args)
 
 
