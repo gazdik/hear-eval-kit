@@ -453,6 +453,6 @@ def task_embeddings(
 
     jobs = []
     for split_id, split in enumerate(metadata["splits"]):
-        jobs.append(run_utils.execute(slurm_args, extract_split, embedding, task_path, embed_task_dir, split, split_id))
+        jobs.append(run_utils.execute(slurm_args, extract_split, embedding, task_path, embed_task_dir, metadata, split, split_id))
 
     return jobs
