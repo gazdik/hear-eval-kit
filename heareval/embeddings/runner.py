@@ -30,7 +30,7 @@ def pop_finished_submission(submissions: list[Submission]) -> Optional[Submissio
 
 
 def count_done_jobs(jobs: list[submitit.Job]):
-    return len([j.done() for j in jobs])
+    return sum([j.done() for j in jobs])
 
 def runner(
     module: str,
