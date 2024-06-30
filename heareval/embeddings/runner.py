@@ -70,7 +70,7 @@ def runner(
     embedding = Embedding(module, model, model_options_dict)
 
     submissions: list[Submission] = []
-    all_jobs = list[submitit.Job] = []
+    all_jobs: list[submitit.Job] = []
 
     if task == "all":
         tasks = list(tasks_dir_path.iterdir())
