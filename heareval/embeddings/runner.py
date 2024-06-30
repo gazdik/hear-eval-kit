@@ -86,8 +86,8 @@ def runner(
         embed_task_dir = embed_dir.joinpath(task_name)
 
         done_embeddings = embed_task_dir.joinpath(".done.embeddings")
-        # if os.path.exists(done_embeddings):
-        #     continue
+        if os.path.exists(done_embeddings):
+            continue
 
         if os.path.exists(embed_task_dir):
             shutil.rmtree(embed_task_dir)
@@ -97,13 +97,18 @@ def runner(
         all_jobs.extend(jobs)
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
+    n_prev_done_jobs = 0
     with tqdm(total=len(all_jobs)) as pbar:
-        sleep(1)
-        pbar.moveto(count_done_jobs(all_jobs))
-
         submission = pop_finished_submission(submissions)
         if submission is not None:
             print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
+            open(submission.done_embeddings, "wt")
+
+        n_done_jobs = count_done_jobs(all_jobs)
+        n_done_jobs_diff = n_done_jobs - n_prev_done_jobs
+        if n_done_jobs_diff > 0:
+            pbar.update(n_done_jobs_diff)
+        sleep(1)
 
     run_utils.wait(all_jobs)
 
