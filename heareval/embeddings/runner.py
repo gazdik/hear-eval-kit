@@ -8,13 +8,29 @@ import os
 import shutil
 from collections import namedtuple
 from pathlib import Path
+from typing import Optional
+from time import sleep
 
+import submitit
 from slugify import slugify
 from tqdm import tqdm
 
 from heareval.embeddings.task_embeddings import Embedding, task_embeddings
 from heareval.utils import run_utils
 
+Submission = namedtuple("Submission", ["task_path", "embed_task_dir", "done_embeddings", "jobs"])
+
+
+def pop_finished_submission(submissions: list[Submission]) -> Optional[Submission]:
+    for i, s in enumerate(submissions):
+        if count_done_jobs(s.jobs) == len(s.jobs):
+            return submissions.pop(i)
+
+    return None
+
+
+def count_done_jobs(jobs: list[submitit.Job]):
+    return len([j.done() for j in jobs])
 
 def runner(
     module: str,
@@ -53,8 +69,8 @@ def runner(
     # Load the embedding model
     embedding = Embedding(module, model, model_options_dict)
 
-    Submission = namedtuple("Submission", ["task_path", "embed_task_dir", "done_embeddings", "jobs"])
     submissions: list[Submission] = []
+    all_jobs = list[submitit.Job] = []
 
     if task == "all":
         tasks = list(tasks_dir_path.iterdir())
@@ -70,19 +86,26 @@ def runner(
         embed_task_dir = embed_dir.joinpath(task_name)
 
         done_embeddings = embed_task_dir.joinpath(".done.embeddings")
-        if os.path.exists(done_embeddings):
-            continue
+        # if os.path.exists(done_embeddings):
+        #     continue
 
         if os.path.exists(embed_task_dir):
             shutil.rmtree(embed_task_dir)
 
         jobs = task_embeddings(embedding, task_path, embed_task_dir, slurm_args)
+
+        all_jobs.extend(jobs)
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
-    for submission in submissions:
-        # Touch this file to indicate that processing completed successfully
-        f"...computed embeddings for {submission.task_path.name} using {module} {model_options}"
-        open(submission.done_embeddings, "wt")
+    with tqdm(total=len(all_jobs)) as pbar:
+        sleep(1)
+        pbar.moveto(count_done_jobs(all_jobs))
+
+        submission = pop_finished_submission(submissions)
+        if submission is not None:
+            print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
+
+    run_utils.wait(all_jobs)
 
 
 if __name__ == "__main__":
