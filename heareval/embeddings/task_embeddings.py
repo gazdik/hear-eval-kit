@@ -425,7 +425,7 @@ def extract_split(
                 f"Unknown embedding type: {metadata['embedding_type']}"
             )
 
-        memmap_embeddings(outdir, prng, metadata, split, embed_task_dir, split_data)
+    memmap_embeddings(outdir, prng, metadata, split, embed_task_dir, split_data)
 
 
 def task_embeddings(
