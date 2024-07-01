@@ -30,7 +30,9 @@ def pop_finished_submission(submissions: list[Submission]) -> Optional[Submissio
 
 
 def count_done_jobs(jobs: list[submitit.Job]):
-    return sum([j.done() for j in jobs])
+    done_jobs = sum([j.done() for j in jobs])
+    print(f"done_jobs: {done_jobs}")
+    return done_jobs
 
 
 def update_progress_bar(all_jobs, n_prev_done_jobs, pbar):
