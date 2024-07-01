@@ -107,14 +107,12 @@ def runner(
         all_jobs.extend(jobs)
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
-    n_prev_done_jobs = 0
-    with tqdm(total=len(all_jobs), desc="Computing embeddings") as pbar:
+    while count_done_jobs(all_jobs) < len(all_jobs):
         submission = pop_finished_submission(submissions)
         if submission is not None:
             print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
             open(submission.done_embeddings, "wt")
 
-        n_prev_done_jobs = update_progress_bar(all_jobs, n_prev_done_jobs, pbar)
         sleep(1)
 
     run_utils.wait(all_jobs)
