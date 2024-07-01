@@ -97,7 +97,7 @@ def runner(
 
         done_embeddings = embed_task_dir.joinpath(".done.embeddings")
         if os.path.exists(done_embeddings):
-            print(stderr, f"...skipping {task_name} as embeddings already computed")
+            print(f"...skipping {task_name} as embeddings already computed", file=stderr)
             continue
 
         if os.path.exists(embed_task_dir):
@@ -117,7 +117,7 @@ def runner(
 
             submission = pop_finished_submission(submissions)
             if submission is not None:
-                print(stderr, f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
+                print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}", file=stderr)
                 open(submission.done_embeddings, "wt")
 
             sleep(1)
