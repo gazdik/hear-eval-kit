@@ -76,7 +76,7 @@ def runner(
     else:
         tasks = [tasks_dir_path.joinpath(task)]
         assert os.path.exists(tasks[0]), f"{tasks[0]} does not exist"
-    for task_path in tqdm(tasks):
+    for task_path in tqdm(tasks, "Submitting tasks"):
         # TODO: Would be good to include the version here
         # https://github.com/hearbenchmark/hear2021-eval-kit/issues/37
         embed_dir = embeddings_dir_path.joinpath(module + options_str)
@@ -97,7 +97,7 @@ def runner(
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
     n_prev_done_jobs = 0
-    with tqdm(total=len(all_jobs)) as pbar:
+    with tqdm(total=len(all_jobs), desc="Computing embeddings") as pbar:
         submission = pop_finished_submission(submissions)
         if submission is not None:
             print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
