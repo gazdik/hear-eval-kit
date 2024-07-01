@@ -79,7 +79,7 @@ def runner(
     for task_path in tqdm(tasks):
         # TODO: Would be good to include the version here
         # https://github.com/hearbenchmark/hear2021-eval-kit/issues/37
-        embed_dir = embeddings_dir_path.joinpath(embedding.name + options_str)
+        embed_dir = embeddings_dir_path.joinpath(module + options_str)
 
         task_name = task_path.name
         embed_task_dir = embed_dir.joinpath(task_name)
