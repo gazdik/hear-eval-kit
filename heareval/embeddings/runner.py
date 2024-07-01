@@ -32,6 +32,15 @@ def pop_finished_submission(submissions: list[Submission]) -> Optional[Submissio
 def count_done_jobs(jobs: list[submitit.Job]):
     return sum([j.done() for j in jobs])
 
+
+def update_progress_bar(all_jobs, n_prev_done_jobs, pbar):
+    n_done_jobs = count_done_jobs(all_jobs)
+    n_done_jobs_diff = n_done_jobs - n_prev_done_jobs
+    if n_done_jobs_diff > 0:
+        pbar.update(n_done_jobs_diff)
+    return n_done_jobs
+
+
 def runner(
         module: str,
         model: str,
@@ -103,10 +112,7 @@ def runner(
             print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
             open(submission.done_embeddings, "wt")
 
-        n_done_jobs = count_done_jobs(all_jobs)
-        n_done_jobs_diff = n_done_jobs - n_prev_done_jobs
-        if n_done_jobs_diff > 0:
-            pbar.update(n_done_jobs_diff)
+        n_prev_done_jobs = update_progress_bar(all_jobs, n_prev_done_jobs, pbar)
         sleep(1)
 
     run_utils.wait(all_jobs)
