@@ -1,4 +1,3 @@
-
 import argparse
 from typing import List, Optional, Any, Callable
 import submitit
@@ -7,9 +6,11 @@ import submitit
 # and any number of additional arguments. It can return any type.
 RunFn = Callable[[...], Optional[Any]]
 
+
 def add_slurm_args(parser: argparse.ArgumentParser, cpus_per_task: int = 1, gpus_per_node: int = 0,
-                   partition: str = 'gpu_p13', timeout: int = 120, account: Optional[str] = None,
-                   qos: str = 'qos_gpu-dev', log_dir: str = 'logs', constraint: Optional[str] = None, exclude: Optional[str] = None) -> None:
+                   memory: str = '16GB', partition: str = 'gpu_p13', timeout: int = 120, account: Optional[str] = None,
+                   qos: str = 'qos_gpu-dev', log_dir: str = 'logs', constraint: Optional[str] = None,
+                   exclude: Optional[str] = None) -> None:
     """
     Adds submit arguments to the provided argparse.ArgumentParser object.
 
@@ -19,6 +20,7 @@ def add_slurm_args(parser: argparse.ArgumentParser, cpus_per_task: int = 1, gpus
     gpus_per_node (int): The number of GPUs per node.
     partition (str): The partition for the resource allocation.
     timeout (int): The timeout in minutes.
+    memory (str): Minimum memory per node. Number followed by unit prefx.
     account (str | None): The account to use.
     qos (str): The quality of service.
     constraint (str | None): The feature constraints for the jobs.
@@ -32,6 +34,8 @@ def add_slurm_args(parser: argparse.ArgumentParser, cpus_per_task: int = 1, gpus
     parser.add_argument('-q', '--qos', default=qos, help='Quality of service', type=str)
     parser.add_argument('-C', '--constraint', default=constraint, help='Feature constraints for the jobs', type=str)
     parser.add_argument('-l', '--log-dir', default=log_dir, help='Log directory', type=str)
+    parser.add_argument('--mem', default=memory, help='Minimum memory per node. Number followed by unit prefix.',
+                        type=str)
     parser.add_argument('--exclude', default=exclude, help='Nodes to exclude', type=str)
 
 
@@ -51,7 +55,7 @@ def execute(args: argparse.Namespace, fn: RunFn, *other_args) -> submitit.Job:
     executor = submitit.AutoExecutor(folder=log_folder)
     executor.update_parameters(timeout_min=args.timeout, slurm_constraint=args.constraint,
                                slurm_cpus_per_task=args.cpus_per_task, slurm_gpus_per_node=args.gpus_per_node,
-                               slurm_partition=args.partition, slurm_exclude=args.exclude,
+                               slurm_partition=args.partition, slurm_exclude=args.exclude, slurm_mem=args.memory,
                                slurm_additional_parameters={'account': args.account,
                                                             'qos': args.qos, } if args.account is not None else None)
 
