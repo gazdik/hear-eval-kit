@@ -107,13 +107,18 @@ def runner(
         all_jobs.extend(jobs)
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
-    while count_done_jobs(all_jobs) < len(all_jobs):
-        submission = pop_finished_submission(submissions)
-        if submission is not None:
-            print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
-            open(submission.done_embeddings, "wt")
+    with tqdm(total=len(all_jobs), desc="Computing embeddings") as pbar:
+        n_done_jobs = 0
+        while n_done_jobs < len(all_jobs):
+            n_done_jobs = count_done_jobs(all_jobs)
+            pbar.moveto(n_done_jobs)
 
-        sleep(1)
+            submission = pop_finished_submission(submissions)
+            if submission is not None:
+                print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
+                open(submission.done_embeddings, "wt")
+
+            sleep(1)
 
     run_utils.wait(all_jobs)
 
