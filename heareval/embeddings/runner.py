@@ -8,6 +8,7 @@ import os
 import shutil
 from collections import namedtuple
 from pathlib import Path
+from sys import stderr
 from typing import Optional
 from time import sleep
 
@@ -96,6 +97,7 @@ def runner(
 
         done_embeddings = embed_task_dir.joinpath(".done.embeddings")
         if os.path.exists(done_embeddings):
+            print(stderr, f"...skipping {task_name} as embeddings already computed")
             continue
 
         if os.path.exists(embed_task_dir):
@@ -115,7 +117,7 @@ def runner(
 
             submission = pop_finished_submission(submissions)
             if submission is not None:
-                print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
+                print(stderr, f"...computed embeddings for {submission.task_path.name} using {module} {model_options}")
                 open(submission.done_embeddings, "wt")
 
             sleep(1)
