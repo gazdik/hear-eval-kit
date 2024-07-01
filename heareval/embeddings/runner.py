@@ -31,7 +31,6 @@ def pop_finished_submission(submissions: list[Submission]) -> Optional[Submissio
 
 def count_done_jobs(jobs: list[submitit.Job]):
     done_jobs = sum([j.done() for j in jobs])
-    print(f"done_jobs: {done_jobs}")
     return done_jobs
 
 
@@ -108,10 +107,11 @@ def runner(
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
 
     with tqdm(total=len(all_jobs), desc="Computing embeddings") as pbar:
-        n_done_jobs = 0
-        while n_done_jobs < len(all_jobs):
+        n_prev_done_jobs = 0
+        while n_prev_done_jobs < len(all_jobs):
             n_done_jobs = count_done_jobs(all_jobs)
-            pbar.moveto(n_done_jobs)
+            pbar.update(n_done_jobs - n_prev_done_jobs)
+            n_prev_done_jobs = n_done_jobs
 
             submission = pop_finished_submission(submissions)
             if submission is not None:
