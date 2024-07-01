@@ -348,7 +348,9 @@ def memmap_embeddings(
 
 
 def extract_split(
-        embedding: Embedding,
+        module_name: str,
+        model_path: str,
+        model_options: Dict[str, Any],
         task_path: Path,
         embed_task_dir: Path,
         metadata: Dict[str, Any],
@@ -357,6 +359,8 @@ def extract_split(
 ):
     prng = random.Random()
     prng.seed(split_id)
+
+    embedding = Embedding(module_name, model_path, model_options)
 
     print(f"Getting embeddings for split: {split}")
 
@@ -429,14 +433,13 @@ def extract_split(
 
 
 def task_embeddings(
-        embedding: Embedding,
+        module_name: str,
+        model_path: str,
+        model_options: Dict[str, Any],
         task_path: Path,
         embed_task_dir: Path,
         slurm_args: argparse.Namespace,
 ) -> List[submitit.Job]:
-    prng = random.Random()
-    prng.seed(0)
-
     metadata_path = task_path.joinpath("task_metadata.json")
     metadata = json.load(metadata_path.open())
     label_vocab_path = task_path.joinpath("labelvocabulary.csv")
@@ -453,6 +456,7 @@ def task_embeddings(
 
     jobs = []
     for split_id, split in enumerate(metadata["splits"]):
-        jobs.append(run_utils.execute(slurm_args, extract_split, embedding, task_path, embed_task_dir, metadata, split, split_id))
+        jobs.append(run_utils.execute(slurm_args, extract_split, module_name, model_path, model_options, task_path,
+                                      embed_task_dir, metadata, split, split_id))
 
     return jobs

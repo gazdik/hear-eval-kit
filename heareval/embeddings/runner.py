@@ -33,13 +33,13 @@ def count_done_jobs(jobs: list[submitit.Job]):
     return sum([j.done() for j in jobs])
 
 def runner(
-    module: str,
-    model: str,
-    tasks_dir: str,
-    task: str,
-    embeddings_dir: str,
-    model_options: str,
-    slurm_args: argparse.Namespace,
+        module: str,
+        model: str,
+        tasks_dir: str,
+        task: str,
+        embeddings_dir: str,
+        model_options: str,
+        slurm_args: argparse.Namespace,
 ) -> None:
     model_options_dict = json.loads(model_options)
     if isinstance(model_options_dict, dict):
@@ -67,7 +67,6 @@ def runner(
         )
 
     # Load the embedding model
-    embedding = Embedding(module, model, model_options_dict)
 
     submissions: list[Submission] = []
     all_jobs: list[submitit.Job] = []
@@ -92,7 +91,7 @@ def runner(
         if os.path.exists(embed_task_dir):
             shutil.rmtree(embed_task_dir)
 
-        jobs = task_embeddings(embedding, task_path, embed_task_dir, slurm_args)
+        jobs = task_embeddings(module, model, model_options_dict, task_path, embed_task_dir, slurm_args)
 
         all_jobs.extend(jobs)
         submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
@@ -125,5 +124,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     runner(args.module, args.model, args.tasks_dir, args.task, args.embeddings_dir, args.model_options, slurm_args=args)
-
-
