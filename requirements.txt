@@ -13,7 +13,6 @@ pytest-cov
 pytest-env
 pytorch-lightning>=2.0
 python-slugify
-submitit
 sed_eval
 soundfile
 spotty

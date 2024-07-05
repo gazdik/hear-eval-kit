@@ -21,7 +21,6 @@ TODO:
     have this work both for pytorch and tensorflow.
     https://github.com/hearbenchmark/hear2021-eval-kit/issues/49
 """
-import argparse
 import json
 import os.path
 import pickle
@@ -29,7 +28,6 @@ import random
 import shutil
 from importlib import import_module
 from pathlib import Path
-import submitit
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -41,7 +39,6 @@ from tqdm.auto import tqdm
 
 # import wandb
 import heareval.gpu_max_mem as gpu_max_mem
-from heareval.utils import run_utils
 
 TORCH = "torch"
 
@@ -58,10 +55,10 @@ class Embedding:
     """
 
     def __init__(
-            self,
-            module_name: str,
-            model_path: str = None,
-            model_options: Optional[Dict[str, Any]] = None,
+        self,
+        module_name: str,
+        model_path: str = None,
+        model_options: Optional[Dict[str, Any]] = None,
     ):
         print(f"Importing {module_name}")
         self.module = import_module(module_name)
@@ -114,7 +111,7 @@ class Embedding:
         return x
 
     def get_scene_embedding_as_numpy(
-            self, audio: Union[np.ndarray, torch.Tensor]
+        self, audio: Union[np.ndarray, torch.Tensor]
     ) -> np.ndarray:
         audio = self.as_tensor(audio)
         if self.type == TORCH:
@@ -127,7 +124,7 @@ class Embedding:
             raise NotImplementedError("Unknown type")
 
     def get_timestamp_embedding_as_numpy(
-            self, audio: Union[np.ndarray, torch.Tensor]
+        self, audio: Union[np.ndarray, torch.Tensor]
     ) -> Tuple[np.ndarray, np.ndarray]:
         audio = self.as_tensor(audio)
         if self.type == TORCH:
@@ -169,7 +166,7 @@ class AudioFileDataset(Dataset):
 
 
 def get_dataloader_for_embedding(
-        data: Dict, audio_dir: Path, embedding: Embedding, batch_size: int = 64
+    data: Dict, audio_dir: Path, embedding: Embedding, batch_size: int = 64
 ):
     if embedding.type == TORCH:
         return DataLoader(
@@ -183,7 +180,7 @@ def get_dataloader_for_embedding(
 
 
 def save_scene_embedding_and_labels(
-        embeddings: np.ndarray, labels: List[Dict], filenames: Tuple[str], outdir: Path
+    embeddings: np.ndarray, labels: List[Dict], filenames: Tuple[str], outdir: Path
 ):
     assert len(embeddings) == len(filenames)
     assert len(labels) == len(filenames)
@@ -194,11 +191,11 @@ def save_scene_embedding_and_labels(
 
 
 def save_timestamp_embedding_and_labels(
-        embeddings: np.ndarray,
-        timestamps: np.ndarray,
-        labels: np.ndarray,
-        filename: Tuple[str],
-        outdir: Path,
+    embeddings: np.ndarray,
+    timestamps: np.ndarray,
+    labels: np.ndarray,
+    filename: Tuple[str],
+    outdir: Path,
 ):
     for i, file in enumerate(filename):
         out_file = outdir.joinpath(f"{file}")
@@ -239,12 +236,12 @@ def get_labels_for_timestamps(labels: List, timestamps: np.ndarray) -> List:
 
 
 def memmap_embeddings(
-        outdir: Path,
-        prng: random.Random,
-        metadata: Dict,
-        split_name: str,
-        embed_task_dir: Path,
-        split_data: Dict,
+    outdir: Path,
+    prng: random.Random,
+    metadata: Dict,
+    split_name: str,
+    embed_task_dir: Path,
+    split_data: Dict,
 ):
     """
     Memmap all the embeddings to one file, and pickle all the labels.
@@ -311,7 +308,7 @@ def memmap_embeddings(
             idx += 1
         elif metadata["embedding_type"] == "event":
             assert emb.ndim == 2
-            embedding_memmap[idx: idx + emb.shape[0]] = emb
+            embedding_memmap[idx : idx + emb.shape[0]] = emb
             assert emb.shape[0] == len(lbl)
             labels += lbl
 
@@ -347,99 +344,14 @@ def memmap_embeddings(
         ).write(json.dumps(filename_timestamps, indent=4))
 
 
-def extract_split(
-        module_name: str,
-        model_path: str,
-        model_options: Dict[str, Any],
-        task_path: Path,
-        embed_task_dir: Path,
-        metadata: Dict[str, Any],
-        split: str,
-        split_id: int,
+def task_embeddings(
+    embedding: Embedding,
+    task_path: Path,
+    embed_task_dir: Path,
 ):
     prng = random.Random()
-    prng.seed(split_id)
+    prng.seed(0)
 
-    embedding = Embedding(module_name, model_path, model_options)
-
-    print(f"Getting embeddings for split: {split}")
-
-    split_path = task_path.joinpath(f"{split}.json")
-    assert split_path.is_file()
-
-    # Copy over the ground truth labels as they may be needed for evaluation
-    shutil.copy(split_path, embed_task_dir)
-
-    # Root directory for audio files for this split
-    audio_dir = task_path.joinpath(str(embedding.sample_rate), split)
-
-    # TODO: We might consider skipping files that already
-    # have embeddings on disk, for speed.
-    # This was based upon futzing with various models
-    # on the dcase task.
-    # Unforunately, this is not tuned per model and is based upon the largest
-    # model and largest audio files we have.
-    estimated_batch_size: int
-    if metadata["sample_duration"] is not None:
-        estimated_batch_size = max(
-            1,
-            int(
-                # 0.9
-                # One of the submissions needs smaller batches
-                0.7
-                * (120 / metadata["sample_duration"])
-                * (16000 / embedding.sample_rate)
-            ),
-        )
-    else:
-        # If the sample duration is None, we use a batch size of 1 as the audio
-        # files will of different length and the model cannot be run with
-        # batch size > 1
-        estimated_batch_size = 1
-    print(f"Estimated batch size = {estimated_batch_size}")
-    split_data = json.load(split_path.open())
-    dataloader = get_dataloader_for_embedding(
-        split_data, audio_dir, embedding, batch_size=estimated_batch_size
-    )
-
-    outdir = embed_task_dir.joinpath(split)
-    if not os.path.exists(outdir):
-        os.makedirs(outdir)
-
-    for audios, filenames in tqdm(dataloader):
-        labels = [split_data[file] for file in filenames]
-
-        if metadata["embedding_type"] == "scene":
-            embeddings = embedding.get_scene_embedding_as_numpy(audios)
-            save_scene_embedding_and_labels(embeddings, labels, filenames, outdir)
-
-        elif metadata["embedding_type"] == "event":
-            embeddings, timestamps = embedding.get_timestamp_embedding_as_numpy(
-                audios
-            )
-            labels = get_labels_for_timestamps(labels, timestamps)
-            assert len(labels) == len(filenames)
-            assert len(labels[0]) == len(timestamps[0])
-            save_timestamp_embedding_and_labels(
-                embeddings, timestamps, labels, filenames, outdir
-            )
-
-        else:
-            raise ValueError(
-                f"Unknown embedding type: {metadata['embedding_type']}"
-            )
-
-    memmap_embeddings(outdir, prng, metadata, split, embed_task_dir, split_data)
-
-
-def task_embeddings(
-        module_name: str,
-        model_path: str,
-        model_options: Dict[str, Any],
-        task_path: Path,
-        embed_task_dir: Path,
-        slurm_args: argparse.Namespace,
-) -> List[submitit.Job]:
     metadata_path = task_path.joinpath("task_metadata.json")
     metadata = json.load(metadata_path.open())
     label_vocab_path = task_path.joinpath("labelvocabulary.csv")
@@ -454,9 +366,72 @@ def task_embeddings(
     shutil.copy(metadata_path, embed_task_dir)
     shutil.copy(label_vocab_path, embed_task_dir)
 
-    jobs = []
-    for split_id, split in enumerate(metadata["splits"]):
-        jobs.append(run_utils.execute(slurm_args, extract_split, module_name, model_path, model_options, task_path,
-                                      embed_task_dir, metadata, split, split_id))
+    for split in metadata["splits"]:
+        print(f"Getting embeddings for split: {split}")
 
-    return jobs
+        split_path = task_path.joinpath(f"{split}.json")
+        assert split_path.is_file()
+
+        # Copy over the ground truth labels as they may be needed for evaluation
+        shutil.copy(split_path, embed_task_dir)
+
+        # Root directory for audio files for this split
+        audio_dir = task_path.joinpath(str(embedding.sample_rate), split)
+
+        # TODO: We might consider skipping files that already
+        # have embeddings on disk, for speed.
+        # This was based upon futzing with various models
+        # on the dcase task.
+        # Unforunately, this is not tuned per model and is based upon the largest
+        # model and largest audio files we have.
+        estimated_batch_size: int
+        if metadata["sample_duration"] is not None:
+            estimated_batch_size = max(
+                1,
+                int(
+                    # 0.9
+                    # One of the submissions needs smaller batches
+                    0.7
+                    * (120 / metadata["sample_duration"])
+                    * (16000 / embedding.sample_rate)
+                ),
+            )
+        else:
+            # If the sample duration is None, we use a batch size of 1 as the audio
+            # files will of different length and the model cannot be run with
+            # batch size > 1
+            estimated_batch_size = 1
+        print(f"Estimated batch size = {estimated_batch_size}")
+        split_data = json.load(split_path.open())
+        dataloader = get_dataloader_for_embedding(
+            split_data, audio_dir, embedding, batch_size=estimated_batch_size
+        )
+
+        outdir = embed_task_dir.joinpath(split)
+        if not os.path.exists(outdir):
+            os.makedirs(outdir)
+
+        for audios, filenames in tqdm(dataloader):
+            labels = [split_data[file] for file in filenames]
+
+            if metadata["embedding_type"] == "scene":
+                embeddings = embedding.get_scene_embedding_as_numpy(audios)
+                save_scene_embedding_and_labels(embeddings, labels, filenames, outdir)
+
+            elif metadata["embedding_type"] == "event":
+                embeddings, timestamps = embedding.get_timestamp_embedding_as_numpy(
+                    audios
+                )
+                labels = get_labels_for_timestamps(labels, timestamps)
+                assert len(labels) == len(filenames)
+                assert len(labels[0]) == len(timestamps[0])
+                save_timestamp_embedding_and_labels(
+                    embeddings, timestamps, labels, filenames, outdir
+                )
+
+            else:
+                raise ValueError(
+                    f"Unknown embedding type: {metadata['embedding_type']}"
+                )
+
+        memmap_embeddings(outdir, prng, metadata, split, embed_task_dir, split_data)

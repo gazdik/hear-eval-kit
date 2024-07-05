@@ -43,7 +43,6 @@ setup(
         "tqdm",
         # "wandb",
         "scikit-learn>=0.24.2",
-        "submitit",
         # otherwise librosa breaks, which fucking dcase-util requires
         # "numba",
         # "numba>=0.49.0",  # not directly required, pinned by Snyk to avoid a vulnerability

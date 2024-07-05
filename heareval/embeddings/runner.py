@@ -2,55 +2,60 @@
 """
 Computes embeddings on a set of tasks
 """
-import argparse
+
 import json
 import os
 import shutil
-from collections import namedtuple
+import time
 from pathlib import Path
-from sys import stderr
-from typing import Optional
-from time import sleep
 
-import submitit
+import click
+import torch
 from slugify import slugify
 from tqdm import tqdm
 
+import heareval.gpu_max_mem as gpu_max_mem
 from heareval.embeddings.task_embeddings import Embedding, task_embeddings
-from heareval.utils import run_utils
 
-Submission = namedtuple("Submission", ["task_path", "embed_task_dir", "done_embeddings", "jobs"])
-
-
-def pop_finished_submission(submissions: list[Submission]) -> Optional[Submission]:
-    for i, s in enumerate(submissions):
-        if count_done_jobs(s.jobs) == len(s.jobs):
-            return submissions.pop(i)
-
-    return None
+# if torch.cuda.is_available() and not tf.test.is_gpu_available(
+#     cuda_only=False, min_cuda_compute_capability=None
+# ):
+#     raise ValueError("GPUs not available in tensorflow, but found by pytorch")
 
 
-def count_done_jobs(jobs: list[submitit.Job]):
-    done_jobs = sum([j.done() for j in jobs])
-    return done_jobs
-
-
-def update_progress_bar(all_jobs, n_prev_done_jobs, pbar):
-    n_done_jobs = count_done_jobs(all_jobs)
-    n_done_jobs_diff = n_done_jobs - n_prev_done_jobs
-    if n_done_jobs_diff > 0:
-        pbar.update(n_done_jobs_diff)
-    return n_done_jobs
-
-
+@click.command()
+@click.argument("module", type=str)
+@click.option(
+    "--model",
+    default=None,
+    help="Location of model weights file",
+    type=click.Path(exists=True),
+)
+@click.option(
+    "--tasks-dir",
+    default="tasks",
+    help="Location of tasks to compute embeddings on",
+    type=str,
+)
+@click.option(
+    "--task",
+    default="all",
+    help="Task to run. (Default: all)",
+    type=str,
+)
+@click.option(
+    "--embeddings-dir", default="embeddings", help="Location to save task embeddings"
+)
+@click.option(
+    "--model-options", default="{}", help="A JSON dict of kwargs to pass to load_model"
+)
 def runner(
-        module: str,
-        model: str,
-        tasks_dir: str,
-        task: str,
-        embeddings_dir: str,
-        model_options: str,
-        slurm_args: argparse.Namespace,
+    module: str,
+    model: str = None,
+    tasks_dir: str = "tasks",
+    task: str = "tasks",
+    embeddings_dir: str = "embeddings",
+    model_options: str = "{}",
 ) -> None:
     model_options_dict = json.loads(model_options)
     if isinstance(model_options_dict, dict):
@@ -78,62 +83,54 @@ def runner(
         )
 
     # Load the embedding model
-
-    submissions: list[Submission] = []
-    all_jobs: list[submitit.Job] = []
+    embedding = Embedding(module, model, model_options_dict)
 
     if task == "all":
         tasks = list(tasks_dir_path.iterdir())
     else:
         tasks = [tasks_dir_path.joinpath(task)]
         assert os.path.exists(tasks[0]), f"{tasks[0]} does not exist"
-    for task_path in tqdm(tasks, "Submitting tasks"):
+    for task_path in tqdm(tasks):
         # TODO: Would be good to include the version here
         # https://github.com/hearbenchmark/hear2021-eval-kit/issues/37
-        embed_dir = embeddings_dir_path.joinpath(module + options_str)
+        embed_dir = embeddings_dir_path.joinpath(embedding.name + options_str)
 
         task_name = task_path.name
         embed_task_dir = embed_dir.joinpath(task_name)
 
         done_embeddings = embed_task_dir.joinpath(".done.embeddings")
         if os.path.exists(done_embeddings):
-            print(f"...skipping {task_name} as embeddings already computed", file=stderr)
             continue
 
         if os.path.exists(embed_task_dir):
             shutil.rmtree(embed_task_dir)
 
-        jobs = task_embeddings(module, model, model_options_dict, task_path, embed_task_dir, slurm_args)
+        start = time.time()
+        gpu_max_mem.reset()
 
-        all_jobs.extend(jobs)
-        submissions.append(Submission(task_path, embed_task_dir, done_embeddings, jobs))
+        task_embeddings(embedding, task_path, embed_task_dir)
 
-    with tqdm(total=len(all_jobs), desc="Computing embeddings") as pbar:
-        n_prev_done_jobs = 0
-        while n_prev_done_jobs < len(all_jobs):
-            n_done_jobs = count_done_jobs(all_jobs)
-            pbar.update(n_done_jobs - n_prev_done_jobs)
-            n_prev_done_jobs = n_done_jobs
+        time_elapsed = time.time() - start
+        gpu_max_mem_used = gpu_max_mem.measure()
+        print(
+            f"...computed embeddings in {time_elapsed} sec "
+            f"(GPU max mem {gpu_max_mem_used}) "
+            f"for {task_path.name} using {module} {model_options}"
+        )
+        open(embed_task_dir.joinpath("profile.embeddings.json"), "wt").write(
+            json.dumps(
+                {
+                    "time_elapsed": time_elapsed,
+                    "gpu_max_mem": gpu_max_mem_used,
+                    "gpu_device_name": gpu_max_mem.device_name(),
+                },
+                indent=4,
+            )
+        )
 
-            submission = pop_finished_submission(submissions)
-            if submission is not None:
-                print(f"...computed embeddings for {submission.task_path.name} using {module} {model_options}", file=stderr)
-                open(submission.done_embeddings, "wt")
-
-            sleep(1)
-
-    run_utils.wait(all_jobs)
+        # Touch this file to indicate that processing completed successfully
+        open(done_embeddings, "wt")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    run_utils.add_slurm_args(parser, cpus_per_task=10, gpus_per_node=1)
-    parser.add_argument("module", type=str)
-    parser.add_argument("--model", type=Path, help="Location of model weights file")
-    parser.add_argument("--tasks-dir", default="tasks", type=str, help="Location of tasks to compute embeddings on")
-    parser.add_argument("--task", type=str, help="Task to run", default="all")
-    parser.add_argument("--embeddings-dir", default="embeddings", type=str, help="Location to save task embeddings")
-    parser.add_argument("--model-options", default="{}", type=str)
-    args = parser.parse_args()
-
-    runner(args.module, args.model, args.tasks_dir, args.task, args.embeddings_dir, args.model_options, slurm_args=args)
+    runner()
