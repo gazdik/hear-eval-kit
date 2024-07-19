@@ -92,6 +92,12 @@ class Embedding:
     def sample_rate(self):
         return self.model.sample_rate
 
+    @property
+    def num_embeddings(self):
+        if hasattr(self.model, "num_embeddings"):
+            return self.model.num_embeddings
+        return 1
+
     def as_tensor(self, x: Union[np.ndarray, torch.Tensor]):
         if self.type == TORCH:
             # Load array as tensor onto device
@@ -361,10 +367,13 @@ def task_embeddings(
     # Copy these two files to the embeddings directory,
     # so we have everything we need in embeddings for doing downstream
     # prediction and evaluation.
-    if not os.path.exists(embed_task_dir):
-        os.makedirs(embed_task_dir)
-    shutil.copy(metadata_path, embed_task_dir)
-    shutil.copy(label_vocab_path, embed_task_dir)
+    embed_task_dirs = [embed_task_dir] if embedding.num_embeddings == 1 \
+        else [embed_task_dir.joinpath(str(i)) for i in range(embedding.num_embeddings)]
+    for embed_dir in embed_task_dirs:
+        if not os.path.exists(embed_dir):
+            os.makedirs(embed_dir)
+        shutil.copy(metadata_path, embed_dir)
+        shutil.copy(label_vocab_path, embed_dir)
 
     for split in metadata["splits"]:
         print(f"Getting embeddings for split: {split}")
@@ -373,7 +382,8 @@ def task_embeddings(
         assert split_path.is_file()
 
         # Copy over the ground truth labels as they may be needed for evaluation
-        shutil.copy(split_path, embed_task_dir)
+        for embed_dir in embed_task_dirs:
+            shutil.copy(split_path, embed_dir)
 
         # Root directory for audio files for this split
         audio_dir = task_path.joinpath(str(embedding.sample_rate), split)
@@ -407,16 +417,23 @@ def task_embeddings(
             split_data, audio_dir, embedding, batch_size=estimated_batch_size
         )
 
-        outdir = embed_task_dir.joinpath(split)
-        if not os.path.exists(outdir):
-            os.makedirs(outdir)
+        out_dirs = []
+        for embed_dir in embed_task_dirs:
+            outdir = embed_dir.joinpath(split)
+            if not os.path.exists(outdir):
+                os.makedirs(outdir)
+            out_dirs.append(embed_dir)
 
         for audios, filenames in tqdm(dataloader):
             labels = [split_data[file] for file in filenames]
 
             if metadata["embedding_type"] == "scene":
                 embeddings = embedding.get_scene_embedding_as_numpy(audios)
-                save_scene_embedding_and_labels(embeddings, labels, filenames, outdir)
+                if embedding.num_embeddings == 1:
+                    save_scene_embedding_and_labels(embeddings, labels, filenames, out_dirs[0])
+                else:
+                    for i in range(embedding.num_embeddings):
+                        save_scene_embedding_and_labels(embeddings[:, i, :], labels, filenames, out_dirs[i])
 
             elif metadata["embedding_type"] == "event":
                 embeddings, timestamps = embedding.get_timestamp_embedding_as_numpy(
@@ -425,13 +442,28 @@ def task_embeddings(
                 labels = get_labels_for_timestamps(labels, timestamps)
                 assert len(labels) == len(filenames)
                 assert len(labels[0]) == len(timestamps[0])
-                save_timestamp_embedding_and_labels(
-                    embeddings, timestamps, labels, filenames, outdir
-                )
+
+                if embedding.num_embeddings == 1:
+                    save_timestamp_embedding_and_labels(
+                        embeddings, timestamps, labels, filenames, out_dirs[0]
+                    )
+                else:
+                    for i in range(embedding.num_embeddings):
+                        save_timestamp_embedding_and_labels(
+                            embeddings[:, i, :], timestamps, labels, filenames, out_dirs[i]
+                        )
 
             else:
                 raise ValueError(
                     f"Unknown embedding type: {metadata['embedding_type']}"
                 )
 
-        memmap_embeddings(outdir, prng, metadata, split, embed_task_dir, split_data)
+        for i in range(embedding.num_embeddings):
+            memmap_embeddings(
+                out_dirs[i],
+                prng,
+                metadata,
+                split,
+                embed_task_dirs[i],
+                split_data,
+            )
