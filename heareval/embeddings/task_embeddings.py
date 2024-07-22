@@ -433,7 +433,7 @@ def task_embeddings(
                     save_scene_embedding_and_labels(embeddings, labels, filenames, out_dirs[0])
                 else:
                     for i in range(embedding.num_embeddings):
-                        save_scene_embedding_and_labels(embeddings[:, i, :], labels, filenames, out_dirs[i])
+                        save_scene_embedding_and_labels(embeddings[i], labels, filenames, out_dirs[i])
 
             elif metadata["embedding_type"] == "event":
                 embeddings, timestamps = embedding.get_timestamp_embedding_as_numpy(
@@ -450,7 +450,7 @@ def task_embeddings(
                 else:
                     for i in range(embedding.num_embeddings):
                         save_timestamp_embedding_and_labels(
-                            embeddings[:, i, :], timestamps, labels, filenames, out_dirs[i]
+                            embeddings[i], timestamps, labels, filenames, out_dirs[i]
                         )
 
             else:
