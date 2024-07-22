@@ -422,7 +422,7 @@ def task_embeddings(
             outdir = embed_dir.joinpath(split)
             if not os.path.exists(outdir):
                 os.makedirs(outdir)
-            out_dirs.append(embed_dir)
+            out_dirs.append(outdir)
 
         for audios, filenames in tqdm(dataloader):
             labels = [split_data[file] for file in filenames]
