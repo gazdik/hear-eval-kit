@@ -98,6 +98,12 @@ class Embedding:
             return self.model.num_embeddings
         return 1
 
+    @property
+    def embedding_names(self) -> List[str]:
+        if hasattr(self.model, "embedding_names"):
+            return self.model.embedding_names
+        raise NotImplementedError("Unknown embedding name")
+
     def as_tensor(self, x: Union[np.ndarray, torch.Tensor]):
         if self.type == TORCH:
             # Load array as tensor onto device
@@ -368,7 +374,7 @@ def task_embeddings(
     # so we have everything we need in embeddings for doing downstream
     # prediction and evaluation.
     embed_task_dirs = [embed_task_dir] if embedding.num_embeddings == 1 \
-        else [embed_task_dir.joinpath(f"z_{str(i)}") for i in range(embedding.num_embeddings)]
+        else [embed_task_dir.joinpath(embed_name) for embed_name in embedding.embedding_names]
     for embed_dir in embed_task_dirs:
         if not os.path.exists(embed_dir):
             os.makedirs(embed_dir)
